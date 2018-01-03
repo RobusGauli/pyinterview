@@ -6,7 +6,6 @@ class VLanNode:
         self.device_secondary = {} #mapping device_id -> device
         self.device_common = {} 
 
-    
     def get_device(self, device_id, is_primary):
         return self.device_primary[device_id] if is_primary else self.device_secondary[device_id]
 
