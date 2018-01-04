@@ -23,7 +23,6 @@
     much more faster. This attribute is only here for making the computaion process easier.
     Ex: {3} #common device.
 """ 
-import csv
 
 class VLanNode:
     """The VLanNode object represent a single node in a cluster of available 
@@ -39,6 +38,8 @@ class VLanNode:
     """
 
     def __init__(self, value):
+        if value is None:
+            raise ValueError('None cannot be a value to the vlannode')
         self.value = value
         # involves a lot of membership testing which we want to compute in O(1) 
         self.devices_primary = set()
@@ -49,7 +50,9 @@ class VLanNode:
         """Helper method that returns appropriate set of device based on
         weather or not the device has vlan id in its range for primary
         or the secondary port.
-        """ 
+        """
+        if not isinstance(is_primary, bool):
+            raise ValueError('is_primary cannot be of type {0}'.format(type(is_primary))) 
         return self.devices_primary if is_primary else self.devices_secondary
    
     def exists_primary_secondary(self, device_id):
@@ -72,6 +75,8 @@ class NetworkGraph:
     """
     
     def __init__(self, vlans):
+        if vlans is None:
+            raise ValueError('vlans cannot be None')
         self.vlans = vlans
         self.id_vlan_node_map = {}
     
@@ -133,7 +138,7 @@ def perform_mapping(graph, requests, vlans_ids):
     Step 6: If there is no device available, if bothe Step4 / Step5 fails, get the next availble
             lowest vlan node and repeat Step4/Step5
     """
-
+    _result = []
     for request in requests:
         request_id = request['request_id']
         current_index = 0
@@ -152,7 +157,8 @@ def perform_mapping(graph, requests, vlans_ids):
                     vlan_node.devices_secondary.remove(device_id)
                     if device_id in vlan_node.devices_common:
                         vlan_node.devices_common.remove(device_id)
-                    print(request_id, device_id, 1, current_vlan_id)
+                    print(request_id, device_id)
+                    _result.append([request_id, device_id, 1, current_vlan_id])
                     break
                 
                 elif request['redundant'] == '1':
@@ -162,10 +168,12 @@ def perform_mapping(graph, requests, vlans_ids):
                         vlan_node.devices_secondary.remove(device_id)
                     if device_id in vlan_node.devices_primary:
                         vlan_node.devices_primary.remove(device_id)
-                    print(request_id, device_id, 0, current_vlan_id)
-                    print(request_id, device_id, 1, current_vlan_id)
+                    print(request_id, device_id)
+                    _result.append([request_id, device_id, 0, current_vlan_id])
+                    _result.append([request_id, device_id, 1, current_vlan_id])
                     break
 
             except ValueError:
                 current_index += 1
+    return _result
         
