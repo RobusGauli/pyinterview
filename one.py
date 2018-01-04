@@ -1,139 +1,128 @@
-import bisect
+# -*- coding: utf-8 -*-
+"""
+    This module consists of algorithm to effectively reserve VLAN IDs
+    on a particular device and a port depending on the redundancy criteria
+    that is defined during the request.
+
+    Note: The implementation involves graph implementation where each VLAN ID
+    is treated as a 'Node(VlanNode)' and devices are treated as its 'Children'.
+
+    VLANNode: This holds the vlan id as a satellite data and has diffrent children attributes
+    which is discussed below. Ex: VLANNode(2) #vlan node with id of 2 
+
+    Children of the VLAN Node are as follows:
+    
+    1. DevicesPrimary: This is a device that has vlan id in its range available for use
+    for primary port. Ex: {1, 2, 3}
+
+    2. DevicesSecondary: This is a device that has vlan id in its range available for use
+    for secondary port. Ex: {3, 6, 7}
+
+    3. DevicesCommon: This is a device that has a vlan id  in its range available for use for 
+    both the primary and secondary port. This makes the process of elimination during mapping
+    much more faster. This attribute is only here for making the computaion process easier.
+    Ex: {3} #common device.
+""" 
 
 class VLanNode:
+    """The VLanNode object represent a single node in a cluster of available 
+    vlan ids. Each vlan node has attributes that holds sets of device ids.
+    
+    :param value: represents the vlan id
+    :param devices_primary: set of device ids whose vlan id is available 
+                            for use in primary port
+    :param devices_secondary: set of device ids whose vlan id is available 
+                            for use in secondary port
+    :param devices_common: set of device ids whose vlan id is availabe 
+                            for use in both the secondary and primary port
+    """
 
     def __init__(self, value):
         self.value = value
-        self.device_primary = {} #mappin device_id -> device
-        self.device_secondary = {} #mapping device_id -> device
-        self.device_common = {}
-
+        # involves a lot of membership testing which we want to compute in O(1) 
         self.devices_primary = set()
         self.devices_secondary = set()
         self.devices_common = set()
-    
+   
     def get_device_list(self, is_primary):
+        """Helper method that returns appropriate set of device based on
+        weather or not the device has vlan id in its range for primary
+        or the secondary port.
+        """ 
         return self.devices_primary if is_primary else self.devices_secondary
-
-    def get_device(self, device_id, is_primary):
-        return self.device_primary[device_id] if is_primary else self.device_secondary[device_id]
-
-    def get_device_mapping_dict(self, is_primary):
-        return self.device_primary if is_primary else self.device_secondary
-    
+   
     def exists_primary_secondary(self, device_id):
-        # return device id if there is a common in both the primary and secondary
-        # else return the empty set
-        return set(self.device_primary.keys()).\
-            intersection(set(self.device_secondary.keys())).\
+        """Helper method that checks if vlan id (self.value)
+        is available for use on both the primary and secondary port
+        """
+        return self.devices_primary.\
+            intersection(self.devices_secondary).\
             intersection(set([device_id]))
-    
-    def common_device_with_lower_value(self, vlan_id):
-        for device in sorted(self.device_common.values(), key=lambda dev: dev.device_id):
-            if vlan_id not in device.reserved_vlan_ids:
-                return device
-    
-    def primary_device_with_lower_value(self, vlan_id):
-        for device in sorted(self.device_secondary.values(), key=lambda dev: dev.device_id):
-            if vlan_id not in device.reserved_vlan_ids:
-                return device
-        
-    
+  
     def __repr__(self):
         return 'VLanNode({0})'.format(self.value)
 
 
-class Device:
-    def __init__(self, device_id):
-        self.device_id = device_id
-        self.reserved_vlan_ids = set()
-
-
-class Graph:
+class NetworkGraph:
+    """This graph object holds the network of vlan nodes.
+    :param vlans: holds the data of vlans (vlans.csv)
+    :param id_vlan_node_map: holds the mapping of vlan_id(key) and vlan_node(value)
+                            for later use during populating the network graph.
+    """
     
-    def __init__(self, data):
-        self.data = data
+    def __init__(self, vlans):
+        self.vlans = vlans
         self.id_vlan_node_map = {}
     
-    def start(self):
-        #tehere is som
-        for vlan_item in self.data:
-            #get the id
+    def populate_graph(self):
+        """This method populates the network with the help of vlans.csv.
+        Summary:
+        Step 1: Iterate over the vlans.csv
+        Step 2: Get the vlan id
+        Step 3: Check to see if the node with that id already exists.
+                If it exists, then grab the node else create a new Vlan node
+                and put it into `self.id_vlan_node_map` for later access
+        Step 4: Find out if the vlan id is for the primary or secondary port
+        Step 5: Accordingly grab the device list from the vlan node attribute.
+        Step 6: Get the device id and add it to the device list
+        Step 7: Also check if the vlan id exists for both the primary and secondary port.
+                If it exists, add it to common device list.
+        Step 8: Repeat
+        """
+        
+        for vlan_item in self.vlans:
+            # vlan id
             _id = int(vlan_item['vlan_id'])
             if _id in self.id_vlan_node_map:
-                #then we have the vlan ndoe
                 vlan_node = self.id_vlan_node_map[_id]
             else:
                 vlan_node = VLanNode(_id)
+                # add to the mapping
                 self.id_vlan_node_map[_id] = vlan_node
-            #now we have vlan node
-            #lets figure out which way to go by looking if its primary or secondary 
-            is_primary_port = vlan_item['primary_port'] == '0'
-            device_dict = vlan_node.get_device_mapping_dict(is_primary_port)
+            is_primary_port = True if vlan_item['primary_port'] == '0') else False
             device_list = vlan_node.get_device_list(is_primary_port)
-            #get the deviceid
             device_id = int(vlan_item['device_id'])
-            if device_id in device_dict:
-                #the get the device node
-                device_node = device_dict[device_id]
-            else:
-                #create one
-                device_node = Device(device_id)
-                device_dict[device_id] = device_node
-            #bisect.insort_left(device_list, device_id)
             device_list.add(device_id)
-            #check to see if this device node mapps to both the primary and secondary
-            #then put this ina device_common dict
+            #check to see if this device's vlan id is available for both the primary and secondary
             if vlan_node.exists_primary_secondary(device_id):
-                vlan_node.device_common[device_id] = device_node
                 vlan_node.devices_common.add(device_id) 
-    
-    
-
-
-def get_graph():
-    import csv
-    data = list(csv.DictReader(open('vlans.csv')))
-    g = Graph(data)
-    g.start()
-    print(g.id_vlan_node_map)
-    return g
-
-
-# def perform_computation(graph, vlans_ids, requests, current_request_index=0):
-#     #get the vlan_node from the lowest of the vlans_id
-#     if current_request_index === len(requests) - 1:
-#         return
-#     request = requests[current_request_index]
-#     if request['redundant'] == '1':
-#         #we need to check for the common nodes
-#         vlan_node = graph.id_vlan_node_map[vlans_ids[0]]
-#         #get the device that has the lowest id and the vland_ids is not reserved
-#         device = vlan_node.common_device_with_lower_value(vlans_ids[0])
-#         print(device.device_id, '----', requests[current_request_index], '...', 0, '----', vlans_ids[0])
-#         print(device.device_id, '----', requests[current_request_index], '...', 1, '----', vlans_ids[0])
-#     else:
-#         vlan_node = graph.id_vlan_node_map[vlans_ids[0]]
-
-
 
 def perform(graph, requests, vlans_ids):
+    print(vlans_ids)
     for request in requests:
         request_id = request['request_id']
         if request['redundant'] == '0':
             current_index = 0
-             
-            
             while True:
                 current_vlan_id = vlans_ids[current_index]
                 vlan_node = graph.id_vlan_node_map[current_vlan_id]
                 try:
+                    #print(vlan_node.devices_secondary)
                     device_id = min(vlan_node.devices_secondary)
                     vlan_node.devices_secondary.remove(device_id)
                     if device_id in vlan_node.devices_common:
                         vlan_node.devices_common.remove(device_id)
                     print(request_id, device_id, 1, current_vlan_id)
-                    
                     break
                 except ValueError:
                     current_index += 1
@@ -156,55 +145,16 @@ def perform(graph, requests, vlans_ids):
                     current_index += 1
         
 
-                
-
-
-def perform_computation(graph, requests, vlans_ids):
-    for request in requests:
-        #request id
-        request_id = request['request_id']
-        if request['redundant'] == '0':
-            #that means we need to look for the device with which has the reserved the vlans_id
-            def find_device(graph, vlans_ids):
-                if not len(vlans_ids):
-                    return
-                vlan_node = graph.id_vlan_node_map[vlans_ids[0]]
-                device = vlan_node.primary_device_with_lower_value(vlans_ids[0])
-                if device:
-                    device.reserved_vlan_ids.add(vlans_ids[0])
-                    return device
-                else:
-                    return find_device(graph, vlans_ids[1:])
-            device = find_device(graph, vlans_ids)
-            # print(request_id, device.device_id)
-        elif request['redundant'] == '1':
-            def find_device_(graph, vlans_ids):
-                if not len(vlans_ids):
-                    return
-                vlan_node = graph.id_vlan_node_map[vlans_ids[0]]
-                device = vlan_node.common_device_with_lower_value(vlans_ids[0])
-                if device:
-                    device.reserved_vlan_ids.add(vlans_ids[0])
-                    return device
-                else:
-                    return find_device_(graph, vlans_ids[1:])
-            device = find_device_(graph, vlans_ids)
-            print(request_id)
-
 
 def main():
     import csv
-    data = list(csv.DictReader(open('vlans.csv')))
-    g = Graph(data)
-    g.start()
-    
-    vlan_ids = sorted(list(g.id_vlan_node_map.keys()), key= lambda k: int(k))
+    vlans = list(csv.DictReader(open('test_vlans.csv')))
+    g = NetworkGraph(vlans)
+    g.populate_graph()
+    print(g.id_vlan_node_map.keys())
+    vlan_ids = sorted(list(g.id_vlan_node_map.keys()))
     #print(vlan_ids)
-    requests = list(csv.DictReader(open('requests.csv')))
+    requests = list(csv.DictReader(open('test_requests.csv')))
     perform(g, requests, vlan_ids)
     return g
-
-if __name__ == '__main__':
-    main()        
-
 
