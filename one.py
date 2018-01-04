@@ -99,39 +99,62 @@ class NetworkGraph:
                 vlan_node = VLanNode(_id)
                 # add to the mapping
                 self.id_vlan_node_map[_id] = vlan_node
-            is_primary_port = True if vlan_item['primary_port'] == '0') else False
+            is_primary_port = True if vlan_item['primary_port'] == '0' else False
             device_list = vlan_node.get_device_list(is_primary_port)
             device_id = int(vlan_item['device_id'])
             device_list.add(device_id)
-            #check to see if this device's vlan id is available for both the primary and secondary
+            # check to see if this device's vlan id is available for both the primary and secondary
             if vlan_node.exists_primary_secondary(device_id):
                 vlan_node.devices_common.add(device_id) 
 
-def perform(graph, requests, vlans_ids):
-    print(vlans_ids)
+
+def perform_mapping(graph, requests, vlans_ids):
+    """This function is the core algorithm behind assiging appropriate vlan id
+    for the device obeying the rules defined when redundancy is required or not.
+
+    :param graph: Instance of Network Graph
+    :param requests: list of requests parsed from requests.csv
+    :param vlans_ids: list of all the vlan ids available for all the devices in the network
+
+
+    Summary:
+    Step 1: Iterate over the requests.csv
+    Step 2: Start from the lowest available vlan id using while loop
+    Step 3: Grab the Vlan Node from the vlan id using `graph.id_vlan_node_map`
+    Step 4: If request does not require redundancy("0")
+            a. Find the device with the lowest device id from the `vlan_node.devices_secondary`
+            b. And if the device exists in devices_common, remove it from devices_common
+            since it is no longer available which require "redundancy"
+    Step 5: If request require redundancy("1")
+            a. Find the device with the lowest device id from the `vlan_node.devices_common`
+            b. And if the device exists in devices_primary and devices_secondary, remove it
+            since it is no longer availabe for later use
+    Step 6: If there is no device available, if bothe Step4 / Step5 fails, get the next availble
+            lowest vlan node and repeat Step4/Step5
+    """
+
     for request in requests:
         request_id = request['request_id']
-        if request['redundant'] == '0':
-            current_index = 0
-            while True:
+        current_index = 0
+        while True:
+            
+            try:
                 current_vlan_id = vlans_ids[current_index]
-                vlan_node = graph.id_vlan_node_map[current_vlan_id]
-                try:
-                    #print(vlan_node.devices_secondary)
+            except IndexError:
+                break
+            
+            vlan_node = graph.id_vlan_node_map[current_vlan_id]
+            
+            try:
+                if request['redundant'] == '0':
                     device_id = min(vlan_node.devices_secondary)
                     vlan_node.devices_secondary.remove(device_id)
                     if device_id in vlan_node.devices_common:
                         vlan_node.devices_common.remove(device_id)
                     print(request_id, device_id, 1, current_vlan_id)
                     break
-                except ValueError:
-                    current_index += 1
-        elif request['redundant'] == '1':
-            current_index = 0
-            while True:
-                current_vlan_id = vlans_ids[current_index]
-                vlan_node = graph.id_vlan_node_map[current_vlan_id]
-                try:
+                
+                elif request['redundant'] == '1':
                     device_id = min(vlan_node.devices_common)
                     vlan_node.devices_common.remove(device_id)
                     if device_id in vlan_node.devices_secondary:
@@ -141,10 +164,10 @@ def perform(graph, requests, vlans_ids):
                     print(request_id, device_id, 0, current_vlan_id)
                     print(request_id, device_id, 1, current_vlan_id)
                     break
-                except ValueError:
-                    current_index += 1
-        
 
+            except ValueError:
+                current_index += 1
+        
 
 def main():
     import csv
@@ -155,6 +178,6 @@ def main():
     vlan_ids = sorted(list(g.id_vlan_node_map.keys()))
     #print(vlan_ids)
     requests = list(csv.DictReader(open('test_requests.csv')))
-    perform(g, requests, vlan_ids)
+    perform_mapping(g, requests, vlan_ids)
     return g
 
