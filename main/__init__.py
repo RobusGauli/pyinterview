@@ -169,16 +169,3 @@ def perform_mapping(graph, requests, vlans_ids):
             except ValueError:
                 current_index += 1
         
-
-def main():
-    import csv
-    vlans = list(csv.DictReader(open('test_vlans.csv')))
-    g = NetworkGraph(vlans)
-    g.populate_graph()
-    print(g.id_vlan_node_map.keys())
-    vlan_ids = sorted(list(g.id_vlan_node_map.keys()))
-    #print(vlan_ids)
-    requests = list(csv.DictReader(open('test_requests.csv')))
-    perform_mapping(g, requests, vlan_ids)
-    return g
-
