@@ -137,6 +137,7 @@ def perform_mapping(graph, requests, vlans_ids):
     for request in requests:
         request_id = request['request_id']
         current_index = 0
+        
         while True:
             
             try:
