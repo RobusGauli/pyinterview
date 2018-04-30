@@ -3,6 +3,7 @@ from nose.tools import (
   raises,
 )
 import csv
+import os
 from main import NetworkGraph
 
 class TestNetworkGraph:
